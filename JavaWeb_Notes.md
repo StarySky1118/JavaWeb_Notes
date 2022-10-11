@@ -28,7 +28,7 @@ Tomcat。
 
 解压如下压缩包即可。
 
-![image-20221010211638118](Z:\postgraduate_learning\JavaWeb_Notes\img\Tomcat压缩包.png)
+![](img/Tomcat压缩包.png)
 
 #### (2) 目录介绍
 
@@ -100,7 +100,7 @@ Tomcat。
 
 使用 `http://` 协议，请求访问并解析服务器中的内容。
 
-![image-20221010213656537](Z:\postgraduate_learning\JavaWeb_Notes\img\HTTP方式解析页面.png)
+![](img/HTTP方式解析页面.png)
 
 #### (8) 默认访问页面
 
@@ -110,7 +110,7 @@ Tomcat。
 
 在 `Settings/Application Servers` 下进行服务器的配置。
 
-![image-20221010214006457](Z:\postgraduate_learning\JavaWeb_Notes\img\IDEA整合Tomcat.png)
+![](img/IDEA整合Tomcat.png)
 
 # 20221009
 
@@ -120,7 +120,7 @@ Tomcat。
 
 第一步：新建模块
 
-![image-20221010214317987](Z:\postgraduate_learning\JavaWeb_Notes\img\新建模块.png)
+![](img/新建模块.png)
 
 第二步：配置模块
 
@@ -132,7 +132,7 @@ Tomcat。
 >
 >​		在项目文件夹内，使用快捷键 `Shift + 右击` ，启动 Windows PowerShell 命令窗口。
 >
-><img src="Z:\postgraduate_learning\JavaWeb_Notes\img\启动PowerShell.png" alt="image-20221010215152519" style="zoom: 50%;" />
+>![](img/启动PowerShell.png)
 >
 >在命令行窗口输入 `tree /f >project.txt` 项目目录便存入了 project.txt 文本文件中。
 
