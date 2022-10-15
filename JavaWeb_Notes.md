@@ -1019,7 +1019,7 @@ MIME 是 HTTP 中的数据类型。格式：大类型/小类型。
 // 获取请求的资源路径
 HTTPServletRequest实例.getRequestURI() -> String
 // 获取请求 url
-HTTPServletRequest实例.getRequestURL() -> String
+HTTPServletRequest实例.getRequestURL() -> StringBuffer
 // 获取客户端 ip 地址    
 HTTPServletRequest实例.getRemoteHost()
 // 获取请求头
@@ -1113,7 +1113,8 @@ public class HelloServlet03 extends HttpServlet {
     <meta charset="UTF-8">
     <title>Hello</title>
     <!--进行相对路径跳转时参照的地址-->
-    <base href="http://localhost:8080/web03/a/b/Hello.html">
+    <!--浏览器会将 / 解析为 http://ip:port/-->
+    <base href="/web03/a/b/Hello.html">
 </head>
 
 <body>
@@ -1182,4 +1183,283 @@ response.sendRedirect("/")
 ```
 
 上面的代码进行重定向，会将 / 发给客户端，客户端浏览器解析 / 为 `localhost:8080`。
+
+# 20221015
+
+## 一、`HttpServletResponse` 类
+
+### 1、作用
+
+和 `HttpServletRequest` 类一样，每次服务器得到请求，都会将响应信息封装到 `HttpServletResponse` 类中。
+
+### 2、两个输出流
+
+- 字节流
+
+  使用的 API：
+
+  ```java
+  ServletOutputStream outputStream = response.getOutputStream();
+  ```
+
+  传递二进制数据。下载。
+
+- 字符流
+
+  使用的 API：
+
+  ```java
+  PrintWriter writer = response.getWriter();
+  ```
+
+  回传字符串。常用。
+
+只能使用其中的一个。
+
+### 3、如何给客户端回传数据
+
+使用案例： `Servlet05` 程序可以给浏览器回传字符串。
+
+```java
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取字符输出流
+        PrintWriter writer = response.getWriter();
+
+        // 输出
+        writer.write("你好，您的请求我已经收到！");
+    }
+```
+
+> 会出现的 bug：中文乱码。
+>
+> 出现原因：`response` 默认字符集为 ISO-8859-1，此字符集不支持中文。
+>
+> 解决措施：
+>
+> ​	1、设置本次响应的编码方式为 UTF-8 
+>
+> ​	2、告知浏览器以 UTF-8 方式解码
+
+```java
+// 设置响应使用的字符集
+response.setCharacterEncoding("UTF-8");
+
+// 通过响应头，告知浏览器使用 UTF-8 进行解码
+response.setHeader("Content-Type", "text/html; charset=UTF-8");
+```
+
+通过以上代码，可以得到如下的响应：
+
+```
+HTTP/1.1 200 OK
+Server: Apache-Coyote/1.1
+Content-Type: text/html;charset=UTF-8
+Content-Length: 39
+Date: Sat, 15 Oct 2022 09:07:29 GMT
+```
+
+> 解决措施二：同时设置服务器响应和客户端的字符集。
+>
+> 获取流之前使用。
+
+```
+// 服务器响应和客户端都使用 UTF-8 字符集
+response.setContentType("text/html; charset=UTF-8");
+```
+
+### 4、请求重定向
+
+原理图：
+
+![image-20221015172128666](img/image-20221015172128666.png)
+
+使用到的 API：
+
+```java
+response.sendRedirect(String path);
+```
+
+>参数中的 path 将交由服务器进行解析，传入 / 时会解析为 http://localhost:8080。
+
+使用案例：`ResponseServlet1` 请求重定向至 `ResponseServlet2`。
+
+解决方案1：直接使用上面的 API。
+
+```java
+public class ResponseServlet1 extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 进行重定向
+        response.sendRedirect("/web04/r2");
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    }
+}
+```
+
+```java
+public class ResponseServlet2 extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        System.out.println("收到请求，正在处理");
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+
+    }
+}
+```
+
+解决方案2：`ResponseServlet1` 收到请求后，修改响应状态码，并设置响应头中的 Location 属性，帮助客户端进行重定向。
+
+```java
+protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 设置响应头状态码
+        response.setStatus(302);
+
+        // 设置响应头中 Location 属性
+        response.setHeader("Location", "/web04/r2");
+    }
+```
+
+特点：
+
+- 使用请求重定向无法访问 `WEB-INF` 中的资源。
+
+- 可以访问工程以外的资源。
+
+## 二、书城项目第二阶段
+
+实现用户注册与登录。
+
+### 1、JavaEE 项目三层架构
+
+![image-20221015180336782](img/image-20221015180336782.png)
+
+- web层/视图展现层
+- service 业务层
+- Dao 持久层
+  - Database Access Object
+
+项目的包结构：
+
+![image-20221015181508094](img/image-20221015181508094.png)
+
+### 2、代码编写流程
+
+#### (1) 创建所需数据库和表。
+
+根据用户登录逻辑，使用到的表为 t_user。
+
+t_user
+
+- id 自增主键
+- username not null unique
+- password not null
+- email 
+
+#### (2) 编写数据库表对应的 JavaBean 对象
+
+每一个数据库表都有一个类与之对应，放入 pojo 包中。
+
+#### (3) 编写 Dao 持久层
+
+需要编写工具类：JdbcUtils
+
+## 三、补充知识：数据库连接池与德鲁伊
+
+### 1、基本介绍
+
+预先在数据库连接池中放入一定数量的连接，当需要建立连接时，只需要从连接池中取出一个，用完再放回去(并不是关闭连接)。
+
+当应用程序向连接池请求的连接数超过最大连接数量，这些请求将被放入等待队列。
+
+原理示意图：
+
+![image-20221015210405169](img/image-20221015210405169.png)
+
+JDBC 中的数据库连接池使用 `javax.sql.DataSource` 表示，接口由第三方实现。
+
+### 2、德鲁伊的使用
+
+```java
+	public void druidTest() {
+        Connection connection = null;
+        // 1.加入配置文件
+
+        // 2.创建 properties 对象读取配置文件
+        Properties properties = new Properties();
+        try {
+            properties.load(new FileInputStream("src/jdbc.properties"));
+            // 3.创建数据库连接池
+            DataSource dataSource = DruidDataSourceFactory.createDataSource(properties);
+            // 4.获取连接
+            connection = dataSource.getConnection();
+            System.out.println(connection);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            if (connection != null) {
+                try {
+                    // 关闭连接，不是真的关闭连接，而是放回连接池
+                    connection.close();
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+```
+
+### 3、德鲁伊工具类
+
+```java
+public class DruidUtils {
+    // 数据库连接池
+    private static DataSource ds;
+
+    // 静态代码块
+    // 在类加载时创建数据库连接池
+    static {
+        // 获取配置文件
+        Properties properties = new Properties();
+        try {
+            properties.load(new FileInputStream("src/jdbc.properties"));
+
+            // 创建数据库连接池
+            ds = DruidDataSourceFactory.createDataSource(properties);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 获取连接
+     * @return 数据库连接池中的一个连接
+     * @throws SQLException
+     */
+    public static Connection getConnection() throws SQLException {
+        return ds.getConnection();
+    }
+
+    public static void close(ResultSet resultSet, Statement statement, Connection connection) throws SQLException {
+        if (resultSet != null) {
+            resultSet.close();
+        }
+        if (statement != null) {
+            statement.close();
+        }
+        if (connection != null) {
+            connection.close();
+        }
+    }
+}
+```
 
