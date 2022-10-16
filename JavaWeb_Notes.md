@@ -1367,7 +1367,70 @@ t_user
 
 #### (3) 编写 Dao 持久层
 
-需要编写工具类：JdbcUtils
+需要编写工具类：JdbcUtils。
+
+```java
+public class DruidUtils {
+    // 数据库连接池
+    private static DataSource dataSource;
+
+    // 类加载时创建数据库连接池
+    static {
+        // 获取配置文件中的信息
+        Properties properties = new Properties();
+        try {
+            properties.load(new FileInputStream("src/main/resources/jdbc.properties"));
+
+            // 创建连接池
+            dataSource = DruidDataSourceFactory.createDataSource(properties);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 获取连接
+     * @return 数据库连接池中的一个连接
+     */
+    public static Connection getConnection() throws SQLException {
+        return dataSource.getConnection();
+    }
+
+    /**
+     * 归还连接
+     * @param resultSet 查询结果集
+     * @param statement 数据库操作对象
+     * @param connection 数据库连接
+     */
+    public static void close(ResultSet resultSet, Statement statement, Connection connection) {
+        if (resultSet != null) {
+            try {
+                resultSet.close();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        if (statement != null) {
+            try {
+                statement.close();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+}
+```
+
+#### (4) 编写 BaseDao
 
 ## 三、补充知识：数据库连接池与德鲁伊
 
@@ -1416,6 +1479,17 @@ JDBC 中的数据库连接池使用 `javax.sql.DataSource` 表示，接口由第
     }
 ```
 
+德鲁伊配置文件：
+
+```properties
+username=root
+password=991118
+url=jdbc:mysql://localhost:3306/book
+driverClassName=com.mysql.cj.jdbc.Driver
+initialSize=5
+maxActive=10
+```
+
 ### 3、德鲁伊工具类
 
 ```java
@@ -1462,4 +1536,129 @@ public class DruidUtils {
     }
 }
 ```
+
+# 20221016
+
+## 一、补充知识：BasicDao
+
+### 1、Apache-DBUtils 引入
+
+上面我们封装了 `DruidUtils` 中的 `close()` 方法，即一旦连接关闭，查询结果集 `resultSet` 也就不能使用了。同时，`resultSet` 中的方法也比较死板。
+
+想法是将查询结果在 Java 程序中进行相应的建模 ，这个建模便被称为 JavaBean/Pojo/Domain。将查询结果集转换为相应建模的列表。
+
+例如：查询结果如下
+
+![image-20221016184443087](img/image-20221016184443087.png)
+
+可以进行如下建模：
+
+注意：建模时要使用包装类，因为只有包装类的值才能为 `null`。
+
+```java
+public class Dept {
+    private Integer deptNo; // 部门编号
+    private String dName; // 部门名称
+    private String loc; // 位置
+}
+```
+
+### 2、Apache-DBUtils
+
+`commons-dbutils` 是 Apache 提供的一个开源 JDBC 工具类库。
+
+使用到的 API：
+
+`QueryRunner` 中的 `query()` 方法。
+
+![image-20221016192426803](img/image-20221016192426803.png)
+
+`BeanListHander` 类：可以为我们生成 BeanList。
+
+```java
+queryRunner.query(connection, sql, new BeanListHandler<>(Dept.class), 10);
+```
+
+`BeanHandler` 类：可以为我们生成单个 Bean 对象。例如，登录。
+
+```java
+queryRunner.query(connection, sql, new BeanHandler<>(Dept.class), 10);
+```
+
+`ScalarHandler` 类：可以为我们生成单行单列的标量对象。
+
+```java
+queryRunner.query(connection, sql, new ScalarHandler<>(), 1);
+```
+
+#### (1) 使用 `DBUtils` 进行查询
+
+```java
+public void testQueryMany() {
+        Connection connection = null;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 创建 QueryRunner
+            QueryRunner queryRunner = new QueryRunner();
+
+            // 执行查询
+            String sql = "select * from dept where deptno = ?";
+            List<Dept> list = queryRunner.query(connection, sql, new BeanListHandler<>(Dept.class), 10);
+
+            // 输出
+            System.out.println(list);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+    }
+```
+
+`Query()` 核心源码如下：
+
+```java
+PreparedStatement stmt = null;
+ResultSet rs = null;
+T result = null;
+
+try {
+    stmt = this.prepareStatement(conn, sql);
+    this.fillStatement(stmt, params);
+    rs = this.wrap(stmt.executeQuery());
+    result = rsh.handle(rs);
+} catch (SQLException var33) {
+    this.rethrow(var33, sql, params);
+} finally {
+    try {
+        // 关闭结果集
+        this.close(rs);
+    } finally {
+        // 关闭数据库操作对象
+        this.close(stmt);
+        if (closeConn) {
+            this.close(conn);
+        }
+
+    }
+}
+
+return result;
+```
+
+#### (2) 使用 `DBUtils` 进行 DML 操作
+
+使用到的 API：
+
+![image-20221016201042495](img/image-20221016201042495.png)
+
+### 3、BasicDao
+
+>  为什么需要 BasicDao？DBUtils + Druid 用起来不是很爽吗？
+>
+> DBUtils + Druid 本身的使用没有问题，但对各个表进行操作时仍然需要进行区分，使用不同的 JavaBean，此即特有 Dao，特有 Dao 中也有公共部分，将公共部分提取出来就是 BasicDao。
 
