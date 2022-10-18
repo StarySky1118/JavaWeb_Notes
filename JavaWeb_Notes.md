@@ -1350,7 +1350,7 @@ protected void doGet(HttpServletRequest request, HttpServletResponse response) t
 
 ### 2、代码编写流程
 
-#### (1) 创建所需数据库和表。
+#### (1) 创建所需数据库和表
 
 根据用户登录逻辑，使用到的表为 t_user。
 
@@ -1431,6 +1431,341 @@ public class DruidUtils {
 ```
 
 #### (4) 编写 BaseDao
+
+```java
+public abstract class BasicDao<T> {
+    // 查询执行器对象
+    private final QueryRunner runner = new QueryRunner();
+
+    /**
+     * 执行更新操作
+     *
+     * @param sql        执行的sql语句
+     * @param parameters 替换参数
+     * @return 受影响的行数
+     */
+    public int update(String sql, Object...parameters) {
+        int effectedRows; // 受影响行数
+        Connection connection = null;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            effectedRows = runner.update(connection, sql, parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        // 返回结果
+        return effectedRows;
+    }
+
+    /**
+     * 查询多行结果
+     * @param sql sql语句
+     * @param clazz 需要的JavaBean的Class对象
+     * @param parameters 替换参数
+     * @return 查询结果集
+     */
+    public List<T> queryMulti(String sql, Class<T> clazz, Object...parameters) {
+        List<T> list; // 查询结果集
+        Connection connection = null;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            list = runner.query(sql, new BeanListHandler<>(clazz), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        // 返回结果
+        return list;
+    }
+
+    /**
+     * 查询单个结果
+     * @param sql 需要执行的sql查询语句
+     * @param clazz JavaBean的Class对象
+     * @param parameters 替换参数
+     * @return 查询结果
+     */
+    public T querySingle(String sql, Class<T> clazz, Object...parameters) {
+        T t; // 返回的 JavaBean 对象
+
+        Connection connection = null;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            t = runner.query(sql, new BeanHandler<>(clazz), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        // 返回结果
+        return t;
+    }
+
+    /**
+     * 查询标量
+     * @param sql 查询sql语句
+     * @param parameters 替换参数
+     * @return 查询变量值
+     */
+    public Object queryScalar(String sql, Object...parameters) {
+        Object o; // 返回的标量
+
+        Connection connection = null;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            o = runner.query(sql, new ScalarHandler<>(), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        // 返回结果
+        return o;
+    }
+}
+```
+
+#### (5) 编写UserDao接口
+
+```java
+public interface UserDao {
+
+
+    /**
+     * 隶属于用户注册<br/>
+     * 根据用户名查询用户信息
+     * @param username 用户名
+     * @return 用户信息
+     */
+    User queryUserByUsername(String username);
+
+    /**
+     * 隶属于用户注册
+     * 保存用户信息到数据库
+     * @param user 用户信息
+     * @return 保存成功则返回1，否则返回0
+     */
+    int saveUser(User user);
+
+    /**
+     * 隶属于用户登录
+     * @param username 用户名
+     * @param password 密码
+     * @return 用户信息
+     */
+    User queryUserByUsernameAndPassword(String username, String password);
+}
+```
+
+#### (6) 编写 UserDaoImpl
+
+```java
+public class UserDaoImpl extends BasicDao<User> implements UserDao {
+    @Override
+    public User queryUserByUsername(String username) {
+        // 查询语句
+        String sql = "select * from t_user where username = ?";
+        // 执行查询返回结果
+        return super.querySingle(sql, User.class, username);
+    }
+
+    @Override
+    public int saveUser(User user) {
+        // 查询语句
+        String sql = "insert into t_user (username, password, email) values (?, ?, ?)";
+
+        // 执行查询返回结果
+        return super.update(sql, user.getUsername(), user.getPassword(), user.getEmail());
+    }
+
+    @Override
+    public User queryUserByUsernameAndPassword(String username, String password) {
+        String sql = "select * from t_user where username = ? and password = ?";
+        return super.querySingle(sql, User.class, username, password);
+    }
+}
+```
+
+Dao 编写完成后，需要进行测试。可以在接口类中，按快捷键 `Ctrl+Shift+T` 创建测试类。
+
+![image-20221018074858237](img/image-20221018074858237.png)
+
+#### (7) 编写UserService和测试
+
+根据登录和注册功能，需要用到数据库的操作有：查询用户名是否存在、用户注册和用户登录。
+
+```java
+public interface UserService {
+    /**
+     * 判断用户名是否存在
+     * @param username 用户名
+     * @return 用户名存在返回True；不存在返回False。
+     */
+    boolean usernameExists(String username);
+
+    /**
+     * 用户注册
+     * @param user 封装好的User对象
+     */
+    void userRegister(User user);
+
+    /**
+     * 用户登录
+     * @param username 用户名
+     * @param password 密码
+     * @return 封装好的User对象
+     */
+    User login(String username, String password);
+}
+```
+
+```java
+public class UserServiceImpl implements UserService {
+    private UserDao userDao = new UserDaoImpl();
+
+    @Override
+    public boolean usernameExists(String username) {
+        // 如果可以查询到结果，说明用户名已经存在
+        return userDao.queryUserByUsername(username) != null ? true : false;
+    }
+
+    @Override
+    public void userRegister(User user) {
+        userDao.saveUser(user);
+    }
+
+    @Override
+    public User login(String username, String password) {
+        return userDao.queryUserByUsernameAndPassword(username, password);
+    }
+}
+```
+
+#### (8) 实现用户注册功能
+
+用户注册功能流程图如下：
+
+<img src="img/注册功能.png" style="zoom:150%;" />
+
+```java
+protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    // 接收用户提交参数
+    String username = request.getParameter("username");
+    String password = request.getParameter("password");
+    String email = request.getParameter("email");
+    String code = request.getParameter("code");
+
+    // 验证码是否正确 --> 先写死为abcde
+    if ("abcde".equalsIgnoreCase(code)) { // 验证码正确
+        // 查询用户名是否已经存在
+        if (userService.usernameExists(username)) { // 用户名已存在
+            // 跳回用户注册界面
+            response.sendRedirect("/book/pages/user/regist.html");
+        } else { // 不存在
+            // 将获取的参数封装成为User，存入数据库
+            User user = new User(null, username, password, email);
+            userService.userRegister(user);
+
+            // 跳转至注册成功页面
+            response.sendRedirect("/book/pages/user/regist_success.html");
+        }
+    } else { // 验证码错误
+        // 跳转至注册页面
+        response.sendRedirect("/book/pages/user/regist.html");
+    }
+}
+```
+
+JavaWeb 阶段，使用 Base + 相对路径的方式进行寻址。
+
+注册功能可能出现的异常：`java.lang.NoClassDefFoundError: Could not initialize class com.zzy.utils.DruidUtils`
+
+产生这种异常的原因是：类加载失败。`DruidUtils` 中如果 `static` 代码块中出现异常，就会导致类加载失败。
+
+```java
+static {
+    // 获取配置文件中的信息
+    Properties properties = new Properties();
+    try {
+        properties.load(new FileInputStream("src/main/resources/jdbc.properties"));
+
+        // 创建连接池
+        dataSource = DruidDataSourceFactory.createDataSource(properties);
+    } catch (Exception e) {
+        throw new RuntimeException(e);
+    }
+}
+```
+
+将代码部署到 Tomcat 上之后，路径 `src/main/resources/jdbc.properties` 便无法找到配置文件，出现异常。
+
+解决方案：使用绝对路径。
+
+![image-20221018130722803](img/image-20221018130722803.png)
+
+复制配置文件的绝对路径，并使用绝对路径寻找配置文件。
+
+#### (9) 用户登录功能
+
+整个流程：
+
+![image-20221018134010894](img/image-20221018134010894.png)
+
+`LoginServlet` 流程
+
+```
+1、获取输入参数
+2、调用 UserService Login()方法
+3、根据返回值判断登录情况
+	成功
+		跳转至登录成功页面
+	失败
+		回到登录页面
+```
+
+```java
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 1、获取输入参数
+        String username = request.getParameter("username");
+        String password = request.getParameter("password");
+
+        // 2、调用 UserService Login()方法
+        if (userService.login(username, password) != null) { // 登录成功
+            // 跳转至登录成功页面
+            response.sendRedirect("/book/pages/user/login_success.html");
+        } else { // 登录失败
+            // 回到登录页面
+            response.sendRedirect("/book/pages/user/login.html");
+        }
+    }
+```
 
 ## 三、补充知识：数据库连接池与德鲁伊
 
@@ -1661,4 +1996,291 @@ return result;
 >  为什么需要 BasicDao？DBUtils + Druid 用起来不是很爽吗？
 >
 > DBUtils + Druid 本身的使用没有问题，但对各个表进行操作时仍然需要进行区分，使用不同的 JavaBean，此即特有 Dao，特有 Dao 中也有公共部分，将公共部分提取出来就是 BasicDao。
+
+```java
+public class BasicDao<T> {
+    private QueryRunner queryRunner = new QueryRunner();
+
+    /**
+     * 通用 DML
+     * @param sql 可替换 sql 语句
+     * @param parameters 替换参数
+     * @return 受影响的行数
+     */
+    public int update(String sql, Object...parameters) {
+        Connection connection = null;
+        int effectedRows = 0;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            effectedRows = queryRunner.update(connection, sql, parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        return effectedRows;
+    }
+
+    /**
+     * 查询多行结果
+     * @param sql 可替换参数的 sql 语句
+     * @param clazz 相应 Bean 的 Class 对象
+     * @param parameters 替换参数
+     * @return 结果集合
+     */
+    public List<T> queryMulti(String sql, Class<T> clazz, Object...parameters) {
+        Connection connection = null;
+        List<T> list;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            list = queryRunner.query(connection, sql, new BeanListHandler<>(clazz), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        return list;
+    }
+
+    /**
+     * 查询单行结果
+     * @param sql sql 语句
+     * @param clazz JavaBean 的 Class 对象
+     * @param parameters sql 中的替换参数
+     * @return 封装好的单行结果
+     */
+    public T querySingle(String sql, Class<T> clazz, Object... parameters) {
+        Connection connection = null;
+        T t;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            t = queryRunner.query(connection, sql, new BeanHandler<>(clazz), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        return t;
+    }
+
+    /**
+     * 查询标量
+     * @param sql sql 语句
+     * @param parameters 替换参数
+     * @return 标量
+     */
+    public Object queryScalar(String sql, Object...parameters) {
+        Connection connection = null;
+        Object o;
+
+        try {
+            // 获取连接
+            connection = DruidUtils.getConnection();
+
+            // 执行查询
+            o = queryRunner.query(connection, sql, new ScalarHandler<>(), parameters);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 关闭连接
+            DruidUtils.close(null, null, connection);
+        }
+
+        return o;
+    }
+}
+```
+
+### 4、特有 Dao
+
+特有 Dao 需要继承 BasicDao，并且可能会有独立的方法。
+
+# 20221018
+
+## 一、断点调试
+
+![image-20221018133242573](img/image-20221018133242573.png)
+
+## 二、JSP
+
+### 1、作用
+
+全称 Java Server Pages，作用是代替 Servlet 程序回传 html 页面的数据。使用 Servlet 输出 html 页面太麻烦了。
+
+![image-20221018165259093](img/image-20221018165259093.png)
+
+### 2、JSP 页面的本质
+
+jsp 页面本质上是 Servlet 程序。
+
+当我们第一次访问 jsp 页面，Tomcat 会将其翻译为 java 源文件，并将其编译。
+
+### 3、JSP 的 page 指令
+
+头部 page 指令：
+
+```jsp
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+```
+
+可以修改 jsp 页面中一些重要的属性或行为。
+
+![image-20221018172055934](img/image-20221018172055934.png)
+
+具体可以查看：http://c.biancheng.net/jsp2/page.html
+
+### 4、JSP 常用脚本
+
+#### (1) 声明脚本
+
+格式：
+
+```jsp
+<%! 声明java代码 %>
+```
+
+作用：给 jsp 翻译出来的 java 类定义属性与方法、甚至是静态代码块。
+
+```jsp
+    <!--声明类属性-->
+    <%!
+        private Integer id;
+        private static Map<String, Object> map;
+    %>
+
+    <%--定义代码块--%>
+    <%!
+        static {
+            map = new HashMap<String, Object>();
+            map.put("key1", "value1");
+        }
+    %>
+
+    <%--声明类方法--%>
+    <%!
+        public int abc() {
+            return 12;
+        }
+    %>
+
+    <%--声明内部类--%>
+    <%!
+        public static class A {
+            
+        }
+    %>
+```
+
+#### (2) 表达式脚本(常用)
+
+格式：
+
+```jsp
+<%=表达式%>
+```
+
+作用：在 jsp 页面上输出数据。
+
+```jsp
+<%=12%>
+```
+
+特点：
+
+- 所有表达式脚本都被翻译到 `_jspService()` 中 `out.print()`
+- `_jspService` 中的对象都可以直接使用，例如 `request`
+
+#### (3) 代码脚本
+
+格式：
+
+```jsp
+<%
+	代码脚本
+%>
+```
+
+作用：在 jsp 页面中编写自己需要的功能。
+
+if、for和在 `_jspService()` 方法中可以写的代码。
+
+特点：
+
+- 代码脚本翻译后在 `_jspService()` 方法中。
+- 可以使用多个代码脚本组成完整的 java 语句。
+- 可以和表达式脚本组合。
+
+#### (4) jsp 中三种注释
+
+html 注释：
+
+```jsp
+<!--html注释-->
+```
+
+html 注释会被翻译到 java 源代码中，输出到客户端。
+
+java 注释：写在代码脚本和表达式脚本中。
+
+jsp 注释：
+
+```jsp
+<%--jsp注释-->
+```
+
+### 5、JSP 中九大内置对象
+
+jsp 中的内置对象：Tomcat 翻译 jsp 成为 java 源代码后，内部提供的九大对象。
+
+`request` 请求对象：
+
+`response` 响应对象：
+
+`pageContext` jsp 上下文对象：
+
+`session` 会话对象：
+
+`applicatoin` servletContext 对象：
+
+`config` servletConfig 对象：
+
+`out` jsp 输出流对象：
+
+`page` 指向当前 jsp 对象：
+
+`exception` 异常对象：
+
+### 6、四大域对象
+
+域对象：可以向 Map 一样存取数据。
+
+`pageContext`：当前 jsp 页面内有效。
+
+`request` ：一次请求有效。
+
+`session` ：一次会话范围内有效。
+
+`application`：整个 web 工程范围内有效。
+
+
+
+
 
