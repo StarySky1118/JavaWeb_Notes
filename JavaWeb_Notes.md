@@ -2280,7 +2280,417 @@ jsp 中的内置对象：Tomcat 翻译 jsp 成为 java 源代码后，内部提�
 
 `application`：整个 web 工程范围内有效。
 
+# 20221019
 
+## 一、JSP
 
+### 6、四大域对象
 
+```jsp
+<%
+	request.setAttribute("key1", "value1");
+%>
+```
 
+使用上有优先顺序：先使用范围小的。
+
+### 7、jsp 中 out 输出和 response.getWriter() 输出的区别
+
+![image-20221019100122105](img/image-20221019100122105.png)
+
+jsp 翻译后底层源代码都使用 out 进行输出，因此在 jsp 页面中统一使用 out 输出，避免打乱页面输出顺序。
+
+`out.write()` 和 `out.print()`：
+
+`print()` 底层会将任何数据转换为字符串进行输出。
+
+浅显结论：统一使用 `print()` 进行输出。
+
+### 8、JSP 常用标签
+
+#### (1) 静态包含
+
+实现如下的需求：
+
+![image-20221019101345763](img/image-20221019101345763.png)
+
+使用案例：
+
+```jsp
+<body>
+    头部信息<br>
+    主体信息<br>
+    <%--这就是静态包含标签--%>
+    <%@include file="/include/foot.jsp"%>
+</body>
+```
+
+如果需要修改页脚信息，去 `webapp/include/foot.jsp` 中统一进行修改即可。
+
+静态包含特点：
+
+- 不会翻译被包含的 jsp 页面
+- 实际上是将被包含的 jsp 页面代码拷贝到相应位置进行输出
+
+#### (2) 动态包含
+
+```jsp
+<%--这就是 jsp 动态包含--%>
+<jsp:include page="foot.jsp">
+    <%--向包含页面传递属性--%>
+    <jsp:param name="password" value="123456"/>
+</jsp:include>
+```
+
+特点：
+
+- 会将包含的 jsp 也翻译为 java 代码
+- 使用代码调用页面，不是直接拷贝到相应位置
+- 可以向包含页面传递属性
+
+原理：
+
+![image-20221019103024409](img/image-20221019103024409.png)
+
+#### (3) 请求转发标签
+
+```jsp
+<%--这就是请求转发标签--%>
+<jsp:forward page="/include/foot.jsp"></jsp:forward>
+```
+
+请求转发的流程：
+
+![image-20221019111913748](img/image-20221019111913748.png)
+
+## 二、Listener 监听器
+
+是 JavaWeb 三大组件之一。Listener 是 JavaEE 的规范。
+
+作用是监听某种事物的变化，通过回调函数，反馈给程序做相应的处理。
+
+### 1、ServletContextListener 监听器
+
+可以监听 ServletContext 对象的创建和销毁。ServletContext 对象在 web 工程启动的时候创建，在 web 工程停止时销毁。
+
+只有两个重要的方法：
+
+![image-20221019113842397](img/image-20221019113842397.png)
+
+使用方法：
+
+编写类实现 ServletContextListener --> 实现两个回调函数 --> web.xml 中进行配置监听器
+
+![image-20221019114623875](img/image-20221019114623875.png)
+
+```java
+public class MyListener implements ServletContextListener, HttpSessionListener, HttpSessionAttributeListener {
+
+    public MyListener() {
+    }
+
+    @Override
+    public void contextInitialized(ServletContextEvent sce) {
+        /* This method is called when the servlet context is initialized(when the Web application is deployed). */
+        System.out.println("初始化ServletContext对象");
+    }
+
+    @Override
+    public void contextDestroyed(ServletContextEvent sce) {
+        /* This method is called when the servlet Context is undeployed or Application Server shuts down. */
+        System.out.println("销毁ServletContext对象");
+}
+```
+
+`web.xml` 中进行配置：
+
+```xml
+<listener>
+	<listener-class>ServletContextListener_.MyListener</listener-class>
+</listener>
+```
+
+# 20221020
+
+## 一、EL 表达式和 JSTL 标签库
+
+EL 表达式全称 Expression Language，表达式语言。主要是替代 jsp 页面的表达式脚本在 jsp 页面进行数据的输出，使表达更加简洁。
+
+```jsp
+<%--使用表达式脚本输出数据--%>
+<%=request.getAttribute("key")%>
+
+<%--使用EL表达式输出数据--%>
+${key}
+```
+
+EL 表达式在输出 null 时，输出的是空串。
+
+### 1、EL 表达式搜索域的顺序
+
+EL 表达式主要输出的是域对象中的数据，其搜索顺序为从小到大：
+
+`pageContext`、`request`、`session`、`application`
+
+### 2、使用 EL 表达式输出复杂 Bean 对象
+
+```jsp
+    <%
+        Person person = new Person();
+        person.setName("田所浩二");
+        Map<String, Object> map = new HashMap<>();
+        map.put("语文", 1919);
+        map.put("数学", 114514);
+        person.setMap(map);
+
+        session.setAttribute("Person", person);
+    %>
+    <%--输出 person--%>
+    ${Person}<br>
+    <%--输出person的name属性--%>
+    ${Person.name}<br>
+    <%--输出person的map中某个key的值--%>
+    ${Person.map.语文}
+    ${Person.map.数学}
+```
+
+上面所有 `.属性` 实际上是去找 get 方法，有 get 方法才会被视为一个属性。
+
+### 3、EL 表达式运算
+
+#### (1) 关系运算
+
+![image-20221020094222491](img/image-20221020094222491.png)
+
+使用案例：
+
+```jsp
+${5 == 5}
+```
+
+#### (2) 逻辑运算
+
+![image-20221020094748175](img/image-20221020094748175.png)
+
+#### (3) 算术运算
+
+![image-20221020095323791](img/image-20221020095323791.png)
+
+#### (4) empty 运算
+
+判断一个数据是否为空，如果为空返回 `true`。
+
+何时数据为空？
+
+值为 `null`、值为空串、长度为 0 的数组、list 集合元素个数为 0 、map 集合元素个数为 0。
+
+使用案例：
+
+```jsp
+<%
+	session.setAttribute("name", null);
+%>
+${empty name}
+```
+
+#### (4) 三元运算
+
+表达式1 ? 表达式2 : 表达式3
+
+#### (5) . 运算和[] 运算
+
+. 可以输出 Bean 对象中某个属性的值。
+
+[] 可以输出有序集合中某个元素的值。或是输出 map 中某个 key 的 value。
+
+```jsp
+${map["name"]}
+```
+
+#### (6) EL 表达式11个隐藏对象
+
+| 变量               | 类型                    | 作用                                    |
+| ------------------ | ----------------------- | --------------------------------------- |
+| `pageContext`      | `pageContextImpl`       | 获取 jsp 中九大内置对象                 |
+| `pageScope`        | `Map<String, Object>`   | 获取 `pageContext` 域中的数据           |
+| `requestScope`     | `Map<String, Object>`   | 获取 `request` 域中的数据               |
+| `sessionScope`     | `Map<String, Object>`   | 获取 `session` 域中的数据               |
+| `applicationScope` | `Map<String, Object>`   | 获取 `servletContext` 域中的数据        |
+| `param`            | `Map<String, String>`   | 获取请求参数的值                        |
+| `paramValues`      | `Map<String, String[]>` | 获取多个请求参数值                      |
+| `header`           | `Map<String, String>`   | 获取请求头                              |
+| `headerValues`     | `Map<String, String>`   | 获取请求头多个值                        |
+| `cookie`           | `Map<String, Cookie>`   | 获取当前请求 Cookie 信息                |
+| `initParam`        | `Map<String, String>`   | 获取 `web.xml` 配置的` <Context-param>` |
+
+##### a. 四个域的使用
+
+使用案例：
+
+```jsp
+<%
+	request.setAttribute("key1", "value1");
+%>
+${requestScope.key1}
+```
+
+> 如果出现 `pageContext` 没有提示的情况，可以导入 Tomcat JSP API 依赖。
+>
+> ![image-20221020113954735](img/image-20221020113954735.png)
+
+##### b. pageContext 的使用
+
+使用案例：
+
+```jsp
+协议为：${pageContext.request.scheme}<br>
+服务器ip为：${pageContext.request.serverName}<br>
+服务器端口号为：${pageContext.request.serverPort}<br>
+工程路径：${pageContext.request.contextPath}<br>
+请求方法：${pageContext.request.method}<br>
+客户端ip为：${pageContext.request.remoteHost}<br>
+会话ID为：${pageContext.session.id}<br>
+```
+
+##### c. `param` 和 `paramValues`
+
+```jsp
+${param.username}
+```
+
+##### d. `header` 和 `headerValues`
+
+```jsp
+${header["User-Agent"]}
+```
+
+##### e. `cookie`
+
+```
+${cookie.JSESSIONID.name}
+```
+
+# 20221021
+
+## 一、JSTL 标签库
+
+### 1、介绍
+
+JSTL(JSP Standard Tag libraty) 标签库，即 JSP 标准标签库。EL 表达式为了替换表达式脚本，JSTL 是为了替换代码脚本。
+
+![image-20221021205200096](../../projects/OpenStack镜像制作/img/JSTL 标签库.png)
+
+在使用前，还要使用 taglib 指令引入标签库。这个过程 IDEA 会自动帮我们完成。
+
+### 2、标签库的使用
+
+首先需要引入依赖：
+
+```xml
+<!-- https://mvnrepository.com/artifact/org.apache.taglibs/taglibs-standard-spec -->
+<dependency>
+    <groupId>org.apache.taglibs</groupId>
+    <artifactId>taglibs-standard-spec</artifactId>
+    <version>1.2.5</version>
+</dependency>
+
+<!-- https://mvnrepository.com/artifact/org.apache.taglibs/taglibs-standard-impl -->
+<dependency>
+    <groupId>org.apache.taglibs</groupId>
+    <artifactId>taglibs-standard-impl</artifactId>
+    <version>1.2.5</version>
+    <scope>runtime</scope>
+</dependency>
+```
+
+### 3、Core 核心库的使用
+
+#### (1) set 标签
+
+作用：向域中保存数据。
+
+使用案例：
+
+```jsp
+<c:set scope="page" var="fuck" value="yes"/>
+```
+
+- scope 域的选择
+- var 键
+- value 值
+
+#### (2) if 标签
+
+作用：做 if 判断。
+
+使用案例：
+
+```jsp
+<c:if test="${12 == 12}">
+	<h1>holy shit</h1>
+</c:if>
+```
+
+标签头使用 test 属性进行判断，test 属性内填入 EL 表达式。标签内是 if 成立会执行的语句。
+
+#### (3) choose、when 和 otherwise 标签
+
+作用：多路判断。相当于 switch。
+
+使用案例：
+
+```jsp
+    <%--设置 pageContext 域中 amount 的值--%>
+    <c:set scope="page" var="amount" value="15"></c:set>
+
+    <c:choose>
+        <c:when test="${pageScope.amount < 5}">
+            <h2>行不行啊细狗</h2>
+        </c:when>
+        <c:when test="${pageScope.amount > 10}">
+            <h2>真的牛啊</h2>
+        </c:when>
+        <c:otherwise>
+            <h2>呵呵</h2>
+        </c:otherwise>
+    </c:choose>
+```
+
+使用说明：
+
+- choose 表示开始多路判断，进行选择
+- when 表示当什么时候
+- otherwise 表示其他情况
+
+#### (4) forEach 标签
+
+作用：遍历输出。
+
+使用案例1：遍历 1-10 输出。
+
+```jsp
+    <c:forEach begin="1" end="10" var="i">
+        ${i}
+    </c:forEach>
+```
+
+使用说明：
+
+- begin：开始
+- end：结束
+- var：循环变量
+
+使用案例2：遍历 Object 数组。
+
+```jsp
+    <%
+        request.setAttribute("arr", new String[] {"hello", "world", "thing"});
+    %>
+    <c:forEach items="${requestScope.arr}" var="item">
+        ${item}
+    </c:forEach>
+```
+
+使用说明：
+
+- items：数据源
