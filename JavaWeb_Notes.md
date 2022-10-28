@@ -2578,7 +2578,7 @@ ${cookie.JSESSIONID.name}
 
 JSTL(JSP Standard Tag libraty) 标签库，即 JSP 标准标签库。EL 表达式为了替换表达式脚本，JSTL 是为了替换代码脚本。
 
-![image-20221021205200096](../../projects/OpenStack镜像制作/img/JSTL 标签库.png)
+![image-20221021205200096](img/JSTL 标签库.png)
 
 在使用前，还要使用 taglib 指令引入标签库。这个过程 IDEA 会自动帮我们完成。
 
@@ -2679,6 +2679,7 @@ JSTL(JSP Standard Tag libraty) 标签库，即 JSP 标准标签库。EL 表达�
 - begin：开始
 - end：结束
 - var：循环变量
+- step：步长
 
 使用案例2：遍历 Object 数组。
 
@@ -2694,3 +2695,1280 @@ JSTL(JSP Standard Tag libraty) 标签库，即 JSP 标准标签库。EL 表达�
 使用说明：
 
 - items：数据源
+
+使用案例3：遍历 Map 集合
+
+```jsp
+    <%
+        Map<String, String> map = new HashMap<>();
+        map.put("key1", "value1");
+        map.put("key2", "value2");
+        map.put("key3", "value3");
+        request.setAttribute("map", map);
+    %>
+    <c:forEach items="${requestScope.map}" var="entry">
+        <h1>${entry}</h1>
+        <h2>${entry.key}</h2>
+        <h2>${entry.value}</h2>
+    </c:forEach>
+```
+
+使用说明：
+
+- var 是循环变量，遍历 map 得到的是 entry(字典中的项目)。
+
+# 20221022
+
+## 一、JSTL 标签库
+
+### 3、Core 核心库的使用
+
+#### (5) forEach
+
+forEach 上面的各种参数都可以在合适时组合使用。
+
+- varStatus：当前遍历到数据的状态。这实际上是一个类，实现了如下方法：
+
+  ![image-20221022085307743](img/image-20221022085307743.png)
+
+  每个都是遍历到数据的属性。
+
+## 二、文件上传
+
+### 1、文件上传介绍
+
+流程：
+
+- form 标签，post 方法 // post 没有长度限制
+- form 标签的 `encType` 属性值必须为 `multipart/form-data`  // 多段(一个表单项一个数据段)拼接，以二进制流的方式发送给服务器 --》 服务器也必须以流的方式接收
+- form 标签内部使用 `<input type="file"></input>`
+- 服务器代码(Servlet)编写
+
+使用案例：
+
+web 层
+
+```jsp
+    <form action="/JSPTest01/hello01" method="post" enctype="multipart/form-data" >
+        用户名<input type="text" name="username"><br>
+        头像<input type="file" name="headImg"><br>
+        <input type="submit" value="提交"><br>
+    </form>
+```
+
+servlet 层
+
+### 2、上传的 HTTP 协议介绍
+
+![image-20221022091614040](img/上传HTTP.png)
+
+### 3、上传字节流的处理
+
+很多第三方实现了客户端字节流处理，可以引入依赖使用写好的方法。
+
+![image-20221022093544009](img/Apache-Commons FileUpload.png)
+
+所需依赖：
+
+```xml
+<!-- https://mvnrepository.com/artifact/commons-fileupload/commons-fileupload -->
+<dependency>
+    <groupId>commons-fileupload</groupId>
+    <artifactId>commons-fileupload</artifactId>
+    <version>1.3.3</version>
+</dependency>
+```
+
+使用 API：
+
+![image-20221022094231279](img/uploadAPI.png)
+
+![image-20221022094426487](img/image-20221022094426487.png)
+
+使用案例：
+
+```java
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 判断上传的是否为多段数据
+        if (ServletFileUpload.isMultipartContent(request)) {
+            // FileItemFactory 可以设置缓存位置与大小，下面代码使用默认大小与默认位置
+            // 默认缓存大小是  10240(10k).
+			// 临时文件默认存储在系统的临时文件目录下.
+            FileItemFactory fileItemFactory = new DiskFileItemFactory();
+            // 创建 ServletFileUpload 实例，用于解析数据
+            ServletFileUpload servletFileUpload = new ServletFileUpload(fileItemFactory);
+            // 解析数据
+            try {
+                List<FileItem> fileItems = servletFileUpload.parseRequest(request);
+
+                for (FileItem fileItem : fileItems) {
+                    // 判断是普通表单项还是上传的数据
+                    if (fileItem.isFormField()) { // 普通表单项
+                        System.out.println("普通表单项的name属性值：" + fileItem.getFieldName());
+                        System.out.println("普通表单项的value属性值："+ fileItem.getString("UTF-8"));
+                    } else { // 上传文件
+                        System.out.println("上传文件项的name属性值：" + fileItem.getFieldName());
+                        System.out.println("上传的文件名：" + fileItem.getName());
+
+                        fileItem.write(new File("z:/" + fileItem.getName()));
+                        System.out.println("文件保存成功！");
+                    }
+                }
+            } catch (FileUploadException e) {
+                throw new RuntimeException(e);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+```
+
+> 中文乱码 bug 还没有解决。
+
+## 三、文件下载
+
+### 1、总体流程
+
+![image-20221022102653784](img/下载流程.png)
+
+服务器程序：
+
+> 需要注意：响应头的内容需要提前设置。
+
+```java
+protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取要下载的文件名
+        String downloadFileName = "lappland.jpg";
+
+        // 读取要下载的内容
+        ServletContext servletContext = getServletContext();
+        InputStream resourceAsStream = servletContext.getResourceAsStream("/files/" + downloadFileName);
+
+        // 告知客户端要回传的数据类型
+        String mimeType = servletContext.getMimeType("/files/" + downloadFileName);
+        System.out.println("下载的文件类型为：" + mimeType);
+        response.setContentType(mimeType);
+
+        // 告知客户端提供的数据适用于下载
+        // Content-Disposition 内容的处理方式
+        // attachment 以附件的方式处理
+        // filename 下载的文件名
+        response.setHeader("Content-Disposition", "attachment;filename=22.jpg");
+
+        // 获取响应的输出流
+        ServletOutputStream outputStream = response.getOutputStream();
+
+        // 流内容复制
+        IOUtils.copy(resourceAsStream, outputStream);
+    }
+```
+
+### 2、文件附件中文显示问题
+
+服务器程序存在的问题：无法识别中文。
+
+谷歌浏览器：可以先使用 `URLEncocder` 类对含有中文的字符串进行 UTF -8 编码，浏览器会以 UTF-8 方式进行解码。
+
+解决方案：
+
+```java
+response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(downloadFileName, "UTF-8"));
+```
+
+火狐浏览器：可以使用 Base64 方式对中文进行编码，火狐浏览器会以 Base64 方式进行解码。
+
+使用方式：
+
+`Content-Disposition: attachment; filename==?charset?B?xxxxx?=`
+
+![image-20221022114847740](img/image-20221022114847740.png)
+
+使用案例：
+
+```java
+response.setHeader("Content-Disposition", "attachment;filename==?UTF-8?B?" + new BASE64Encoder().encode(downloadFileName.getBytes(StandardCharsets.UTF_8)) + "?=");
+```
+
+综上所述，可以根据浏览器型号进行响应的编解码：
+
+```java
+        if (request.getHeader("User-Agent").contains("FireFox")) { // 使用火狐浏览器
+            // 使用 Base64 编码
+            response.setHeader("Content-Disposition", "attachment;filename==?UTF-8?B?" + new BASE64Encoder().encode(downloadFileName.getBytes(StandardCharsets.UTF_8)) + "?=");
+        } else { // 其他浏览器
+            // 使用URL编码
+            response.setHeader("Content-Disposition", "attachment;filename=" + URLEncoder.encode(downloadFileName, "UTF-8"));
+        }
+```
+
+# 20221023
+
+## 一、书城项目第三阶段
+
+### 1、页面 jsp 动态化
+
+将所有的 html 页面转换为 jsp 页面。
+
+- 在页面开始添加头部 page 指令：
+
+  ```jsp
+  <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+  ```
+
+- 更改后缀名
+- 如果出现重命名后未进行 refactor，还需要进行批量替换
+
+> 批量替换操作：Ctrl + Shift + R
+>
+> ![image-20221023081952169](img/批量替换.png)
+
+### 2、抽取页面中相同的内容
+
+抽取各个页面中公共的部分，写成 jsp 页面，进行静态包含即可。
+
+#### (1) 韩总部分
+
+以下代码在四个页面中出现：
+
+```HTML
+    <div>
+      <span>欢迎<span class="um_span">韩总</span>光临尚硅谷书城</span>
+      <a href="../order/order.jsp">我的订单</a>
+      <a href="../../index.jsp">注销</a>&nbsp;&nbsp;
+      <a href="../../index.jsp">返回</a>
+    </div>
+```
+
+将代码写入一个 jsp 页面中，使用如下代码进行静态包含：
+
+```jsp
+<%@include file="/pages/common/action_success.jsp"%>
+```
+
+#### (2) 相对路径 base、jQuery、CSS样式
+
+注意：jsp 页面归根是 html 页面，由浏览器解析，因此 / 只会翻译到端口号。
+
+`base.jsp` 应该这样写：
+
+```jsp
+<base href="/book/">
+<link type="text/css" rel="stylesheet" href="static/css/style.css" >
+<script type="text/javascript" src="static/script/jquery-1.7.2.js"></script>
+```
+
+使用 base 标签，link 标签和 script 标签中的 href 就不能以 / 开始了，为了让地址连起来，在 base 标签中的 href  后添加一个 /。
+
+#### (3) 页脚的抽取
+
+将页脚抽取，其余页面静态包含。
+
+#### (4) 抽取 manager 页面中的相同部分
+
+将以下代码抽离：
+
+```jsp
+<div>
+    <a href="pages/manager/book_manager.jsp">图书管理</a>
+    <a href="pages/manager/order_manager.jsp">订单管理</a>
+    <a href="index.jsp">返回商城</a>
+</div>
+```
+
+### 3、动态 base 标签
+
+/ 会解析到工程路径，但一旦代码放到服务器上，浏览器仍解析 / 成为 localhost:8080 就不对了，应该使用动态标签，根据在地址栏输入的请求生成 base 。
+
+生成动态 base 路径
+
+```jsp
+    <%
+        String basePath = request.getScheme()
+                + "://"
+                + request.getServerName()
+                + ":"
+                + request.getServerPort()
+                + request.getContextPath()
+                + "/";
+    %>
+    <base href="<%=basePath%>">
+```
+
+# 20221024
+
+## 二、书城项目第三阶段
+
+### 1、登录表单提交错误回显
+
+![image-20221024085041759](img/image-20221024085041759.png)
+
+登录失败时，使用请求转发方式回到 `Login.jsp`
+
+```java
+// 请求转发回到登录页面
+request.getRequestDispatcher("/pages/user/login.jsp").forward(request, response);
+```
+
+因此，需要回显的信息可以放到 request 域中。
+
+#### (1) 提示信息
+
+在 `login.jsp` 中：
+
+```jsp
+<span class="errorMsg">
+	${requestScope.msg == null ? "请输入用户名和密码" : requestScope.msg}
+</span>
+```
+
+#### (2) 用户名信息回写
+
+在 `login.jsp` 中，根据 `requestScope.username` 是否为 `null` 决定是否写上默认数据。 
+
+```jsp
+<input class="itxt" type="text" placeholder="请输入用户名" autocomplete="off" tabindex="1" name="username" value="${empty requestScope.username ? "" : requestScope.username}"/>
+```
+
+### 2、注册表单错误信息回显
+
+错误信息包括：用户名不能重复、验证码错误。
+
+验证码错误需要回显的信息为：用户名、邮箱
+
+用户名重复需要回显的信息：邮箱
+
+**验证码错误**
+
+servlet 程序：
+
+```java
+// 错误信息
+request.setAttribute("msg", "验证码错误！");
+
+// 需要回显的信息
+request.setAttribute("username", username);
+request.setAttribute("email", email);
+
+// 请求转发方式跳转至注册页面
+request.getRequestDispatcher("/pages/user/regist.jsp").forward(request, response);
+```
+
+前端：
+
+错误信息显示：
+
+```jsp
+<span class="errorMsg">
+	${empty requestScope.msg ? "" : requestScope.msg}
+</span>
+```
+
+用户名回显：
+
+```jsp
+<input class="itxt" type="text" placeholder="请输入用户名" autocomplete="off" tabindex="1" name="username" id="username" value="${empty requestScope.username ? "" : requestScope.username}"/>
+```
+
+邮箱回显也是类似。
+
+**用户名错误**
+
+只需要更改，Servlet 程序即可。
+
+### 3、代码优化——将注册 Servlet 和登录 Servlet 合并为一个 用户 Servlet
+
+![image-20221024094525757](img/Servlet合并.png)
+
+思路：使用隐藏表单项 hidden 的值，标识请求来向。
+
+在 `login.jsp` 和 `regist.jsp` 中添加 hidden 表单项：
+
+```html
+<input type="hidden" name="action" value="regist">
+```
+
+添加 `UserServlet` 程序，能够根据 `action` 值的不同进行处理。
+
+改变 `login.jsp` 和 `regist.jsp` 中的请求方向。
+
+```html
+<form action="userServlet" method="post">
+```
+
+将原来 `LoginServlet` 和 `RegistServlet` 中的代码复制到 `UserServlet` 中。根据需要将重复的代码写成方法。
+
+将 `LoginServlet` 和 `RegistServlet` 删除，注意 `web.xml` 中也要删除。
+
+### 4、代码优化——使用反射替代 if...else...
+
+使用隐藏域提交参数，在 Servlet 程序中进行分支会导致大量的 if else。
+
+![image-20221024102131771](img/存在问题.png)
+
+优化方案：使用反射直接调用方法。
+
+使用方法：
+
+```java
+public class UserServletTest {
+    public void login() {
+        System.out.println("登录方法...");
+    }
+
+    public void regist() {
+        System.out.println("注册方法执行...");
+    }
+
+    public void updatePassword() {
+        System.out.println("更改密码...");
+    }
+
+    public static void main(String[] args) {
+        String action = "login";
+        try {
+            Method method = UserServletTest.class.getDeclaredMethod(action);
+            method.invoke(new UserServletTest());
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+具体使用：
+
+```java
+protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 根据 request 中 action 参数的值决定分支
+        String action = request.getParameter("action");
+        System.out.println(action);
+
+        try {
+            Method method = this.getClass().getDeclaredMethod(action, HttpServletRequest.class, HttpServletResponse.class);
+            method.invoke(this, request, response);
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+### 5、代码优化——抽取 BaseServlet
+
+![image-20221024111352837](img/image-20221024111352837.png)
+
+各种 Servlet 程序共有的逻辑：获取 hidden 隐藏域的 action，使用反射根据 action 调用方法。
+
+抽取的 BaseServlet 如下：
+
+```java
+protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // 根据 request 中 action 参数的值决定分支
+        String action = req.getParameter("action");
+        System.out.println(action);
+
+        try {
+            Method method = this.getClass().getDeclaredMethod(action, HttpServletRequest.class, HttpServletResponse.class);
+            method.invoke(this, req, resp);
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+`UserServlet` 接收到请求后，会自动调用父类 `BaseServlet` 中的 `doPost()` 方法，实际运行类型还是 `UserServlet` 。
+
+可能会出现的问题：如果反射获取的是子类中的 `private` 方法，将无法获取与调用，将权限改为 `protected` 是一个比较好的选择。
+
+### 6、BeanUtils 的使用
+
+优化背景：用户注册表单会提交大量数据，如果在 Servlet 程序中使用 `getParameter()` 一个一个获取，再封装到 Bean 对象中，有些麻烦。
+
+```java
+// 接收用户提交参数
+String username = request.getParameter("username");
+String password = request.getParameter("password");
+String email = request.getParameter("email");
+String code = request.getParameter("code");
+
+// 封装
+User user = new User(null, username, password, email);
+```
+
+BeanUtils 是第三方工具类。
+
+使用到的依赖：
+
+```xml
+<!-- https://mvnrepository.com/artifact/commons-beanutils/commons-beanutils -->
+<dependency>
+    <groupId>commons-beanutils</groupId>
+    <artifactId>commons-beanutils</artifactId>
+    <version>1.9.3</version>
+</dependency>
+```
+
+使用到的 API：
+
+```java
+BeanUtils.populate(user, request.getParameterMap());
+```
+
+使用案例：
+
+在 `regist.jsp` 中，使用上述方法封装一个 User 对象。
+
+```java
+User user = new User();
+try {
+    BeanUtils.populate(user, request.getParameterMap());
+} catch (IllegalAccessException e) {
+    throw new RuntimeException(e);
+} catch (InvocationTargetException e) {
+    throw new RuntimeException(e);
+}
+```
+
+将上述代码提取，进行复用：
+
+```java
+public class WebUtils {
+
+    /**
+     * 
+     * @param request Http 请求
+     * @param bean bean 对象
+     */
+    public static void copyParamToBean(HttpServletRequest request, Object bean) {
+        
+        try {
+            BeanUtils.populate(bean, request.getParameterMap());
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
+}
+```
+
+> 注入时调用标准 set 方法。
+
+复用改进：
+
+```java
+public class WebUtils {
+    
+    public static void copyParamToBean(Map paramMap, Object bean) {
+
+        try {
+            BeanUtils.populate(bean, paramMap);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+}
+```
+
+进一步优化：使用泛型，直接返回封装好的对象。
+
+```java
+public class WebUtils {
+
+    public static<T> T copyParamToBean(Map paramMap, T bean) {
+
+        try {
+            BeanUtils.populate(bean, paramMap);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
+
+        return bean;
+    }
+
+}
+```
+
+# 20221025
+
+## 一、书城项目第四阶段
+
+### 1、使用 EL 表达式改造回显
+
+```html
+<input class="itxt" type="text" placeholder="请输入用户名" autocomplete="off" tabindex="1" name="username" id="username" value="${requestScope.username}"/>
+```
+
+由于 EL 对于空串的输出为空，因此 `value="${requestScope.username}` 无需额外判断。
+
+## 二、书城项目第五阶段-图书模块
+
+### 1、MVC 概念
+
+MVC：Model 模型、View 视图、Controller 控制器。
+
+![image-20221025084854963](img/image-20221025084854963.png)
+
+![image-20221025085047135](img/image-20221025085047135.png)
+
+### 2、图书模块
+
+#### (1) 创建图书数据库表
+
+涉及到的图书属性有：id(自增主键)、名称、作者、价格、销量、库存、封面路径。
+
+建表的 SQL 语句：
+
+```sql
+-- ----------------------------
+-- Table structure for t_book
+-- ----------------------------
+DROP TABLE IF EXISTS `t_book`;
+CREATE TABLE `t_book`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+  `author` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+  `price` decimal(10, 2) NULL DEFAULT NULL,
+  `sales` int NULL DEFAULT NULL,
+  `stock` int NULL DEFAULT NULL,
+  `img_path` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 21 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of t_book
+-- ----------------------------
+INSERT INTO `t_book` VALUES (1, 'java从入门到放弃', '国哥', 80.00, 9999, 9, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (2, '数据结构与算法', '严敏君', 78.50, 6, 13, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (3, '怎样拐跑别人的媳妇', '龙伍', 68.00, 99999, 52, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (4, '木虚肉盖饭', '小胖', 16.00, 1000, 50, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (5, 'C++编程思想', '刚哥', 45.50, 14, 95, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (6, '蛋炒饭', '周星星', 9.90, 12, 53, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (7, '赌神', '龙伍', 66.50, 125, 535, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (8, 'Java编程思想', '阳哥', 99.50, 47, 36, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (9, 'JavaScript从入门到精通', '婷姐', 9.90, 85, 95, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (10, 'cocos2d-x游戏编程入门', '国哥', 49.00, 52, 62, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (11, 'C语言程序设计', '谭浩强', 28.00, 52, 74, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (12, 'Lua语言程序设计', '雷丰阳', 51.50, 48, 82, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (13, '西游记', '罗贯中', 12.00, 19, 9999, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (14, '水浒传', '华仔', 33.05, 22, 88, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (15, '操作系统原理', '刘优', 133.05, 122, 188, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (16, '数据结构 java版', '封大神', 173.15, 21, 81, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (17, 'UNIX高级环境编程', '乐天', 99.15, 210, 810, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (18, 'javaScript高级编程', '国哥', 69.15, 210, 810, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (19, '大话设计模式', '国哥', 89.15, 20, 10, 'static/img/default.jpg');
+INSERT INTO `t_book` VALUES (20, '人月神话', '刚哥', 88.15, 20, 80, 'static/img/default.jpg');
+
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+> 如何将表导出为 SQL 语句？
+>
+> ![image-20221025090759208](img/image-20221025090759208.png)
+
+#### (2) 创建 Bean
+
+> 注：基本数据类型要封装一下，以便接收 null。
+
+#### (3) 编写 Dao 并测试
+
+需要实现的功能：
+
+​	DML：添加图书、删除图书和修改图书。
+
+​	DQL：查询单个图书、查询多个图书。
+
+`BookDao` 中规定了这些功能。
+
+`BookDaoImpl` 实现 `BookDao` 继承 `BasicDao`。
+
+#### (4) 编写 Service 并测试
+
+需要实现的功能：
+
+​	图书的增、删、改
+
+​	查询单个图书、查询多个图书
+
+`BookService` 规定了这些功能。
+
+`BookServiceImpl` 利用 `BookDao` 实现了这些功能。
+
+#### (5) 编写 web 层与页面联调
+
+首先实现列表显示功能，其流程如下：
+
+![image-20221025111857908](img/图书显示流程.png)
+
+请求 `book_manager.jsp` 的页面首先发送请求到 `BookServlet`。
+
+```html
+<a href="bookServlet?action=listBook">图书管理</a>
+```
+
+`BookServlet` 继承 `BaseServlet`，`doPost()` 可以直接使用反射机制，使用 action 的值调用方法，只需要写 `listBook()` 方法即可。
+
+```java
+protected void listBook(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 使用 BookService 查询图书列表
+        List<Book> books = bookService.queryBooks();
+
+        // 2、将图书列表放入 request 域中
+        request.setAttribute("books", books);
+
+        // 请求转发到 /pages/manager/book_manager.jsp
+        request.getRequestDispatcher("/pages/manager/book_manager.jsp").forward(request, response);
+}
+```
+
+但是 `BaseServlet` 中 `doGet()` 方法没有使用反射调用方法，直接调用 `doPost()` 即可。
+
+```
+protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        doPost(req, resp);
+    }
+```
+
+# 20221026
+
+## 一、前台与后台
+
+![image-20221026153646806](img/image-20221026153646806.png)
+
+## 二、书城项目第五阶段——图书模块
+
+### 1、图书模块
+
+#### (1) 添加图书
+
+添加图书流程：
+
+![image-20221026154409513](img/添加图书.png)
+
+**`book_edit.jsp` 页面的修改**
+
+修改 `book_edit.jsp` 提交地址：
+
+```html
+<form action="manager/bookServlet" method="post">
+```
+
+设置隐藏域，提交 `action` 属性：
+
+```html
+<input type="hidden" name="action" value="addBook">
+```
+
+修改各个输入框 `name` 与 Java Bean 对象一致：
+
+```html
+<td><input name="name" type="text" value="时间简史"/></td>
+```
+
+**`BookServlet` 程序的修改**
+
+```java
+    protected void addBook(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数，封装成为Book bean 对象
+        Book book = WebUtils.copyParamToBean(request.getParameterMap(), new Book());
+
+        // 调用 BookService 中的 addBook 方法
+        bookService.addBook(book);
+
+        // 跳转到图书列表页面
+        request.getRequestDispatcher("/manager/bookServlet?action=listBook").forward(request, response);
+    }
+```
+
+存在的 bug 1：使用请求转发方式，如果刷新，请求会重复发送，导致再次添加图书。
+
+修改：使用请求重定向方式。
+
+```java
+response.sendRedirect("/book/manager/bookServlet?action=listBook");
+```
+
+存在的 bug 2：中文乱码问题。
+
+数据库中保存的数据存在 `æ¶é´ç®å²` 样式的乱码，说明解码方式出错，要制定使用 UTF-8 模式解码请求。
+
+解决：在 `BaseServlet.java` 中，设置请求的解码方式：
+
+```java
+req.setCharacterEncoding("UTF-8");
+```
+
+#### (2) 删除图书
+
+总体流程：
+
+![image-20221026171150910](img/image-20221026171150910.png)
+
+疑问1：为什么可以获得 id？
+
+![image-20221026173011252](img/image-20221026173011252.png)
+
+添加图书创建的 Java Bean 对象是没有 id 的，但是访问数据库回传的 Java Bean 对象有 id。
+
+**修改 `book_manager.jsp` 页面 “删除” 超链接请求 url：**
+
+```html
+<td><a href="manager/bookServlet?action=deleteBook&id=${book.id}">删除</a></td>
+```
+
+**编写 `BookServlet` 中的 `deleteBook()` 方法：**
+
+```java
+    protected void deleteBook(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取删除图书 id
+        String idStr = request.getParameter("id");
+        int id = Integer.parseInt(idStr);
+
+        // 删除图书
+        bookService.deleteBookById(id);
+
+        // 重定向到 /book/manager/book_manager.jsp
+        response.sendRedirect(request.getContextPath() + "/manager/bookServlet?action=listBook");
+    }
+```
+
+改进：删除键添加确认
+
+在  `book_manager.jsp` 页面中：
+
+```javascript
+<script type="text/javascript">
+        $(function () {
+            // 给删除按钮绑定单击事件
+            $("a.deleteBtn").click(function () {
+                // false 会取消元素的默认行为
+                // this 是发生此事件的 DOM 对象，$(this) 可以将 DOM 对象封装为 jQuery 对象
+                return confirm("您确定要删除【"+$(this).parent().parent().children().first().text()+"】吗？")
+            })
+        })
+</script>
+```
+
+#### (3) 修改图书
+
+**a. 图书信息的回显**
+
+总体流程图：
+
+![image-20221026181525787](img/image-20221026181525787.png)
+
+`book_manager.jsp` 中：
+
+```html
+<td><a href="manager/bookServlet?action=getBook&id=${book.id}">修改</a></td>
+```
+
+`BookServlet` 中：
+
+```
+    protected void getBook(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取图书编号
+        String idStr = request.getParameter("id");
+        int id = Integer.parseInt(idStr);
+
+        // 根据图书编号获取图书对象
+        Book book = bookService.queryBookById(id);
+
+        // 将图书对象放入 request 域
+        request.setAttribute("Book", book);
+
+        // 请求转发
+        request.getRequestDispatcher("//pages/manager/book_edit.jsp").forward(request, response);
+    }
+```
+
+`book_edit.jsp` 中：
+
+```html
+<td><input name="name" type="text" value="${requestScope.Book.name}"/></td>
+```
+
+**b. 保存修改**
+
+整体流程：
+
+![image-20221026184135839](img/image-20221026184135839.png)
+
+**`book_edit.jsp`** 
+
+根据 request 域中是否存在查询到的 book 对象判断进行的操作，将其中的隐藏域修改如下：
+
+```html
+<input type="hidden" name="action" value="${empty requestScope.Book ? "addBook" : "updateBook"}">
+```
+
+**`BookServlet`**
+
+```java
+protected void updateBook(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数，封装成为 Book 对象
+        Book book = WebUtils.copyParamToBean(request.getParameterMap(), new Book());
+
+        // 调用 Service update 方法
+        bookService.updateBook(book);
+
+        // 重定向到 /book/manager/book_manager.jsp
+        response.sendRedirect(request.getContextPath() + "/manager/bookServlet?action=listBook");
+    }
+```
+
+存在的问题：封装的 Book 对象没有 id 属性，无法执行 update。
+
+解决方案：在 `book_edit` 中添加一个隐藏域，放入 id 的值。
+
+```html
+<input type="hidden" name="id" value="${requestScope.Book.id}">
+```
+
+# 20221027
+
+## 一、书城第五阶段——图书模块
+
+### 1、图书模块
+
+#### (4) 图书分页
+
+总体流程图：
+
+![image-20221027082748324](img/image-20221027082748324.png)
+
+##### **a. Page 类的编写**
+
+使用泛型可以使分页模型用于更多的场合。
+
+```java
+public class Page<T> {
+    public static final Integer DEFAULT_PAGE_SIZE = 4;
+
+    private Integer pageNo; // 当前页码
+    private Integer pageTotal; // 总页码
+    private Integer pageTotalCount; // 总记录数
+    private Integer pageSize = DEFAULT_PAGE_SIZE; // 每页显示记录数
+    private List<T> items; // 当前页数据
+
+    // 构造器
+    public Page() {
+    }
+
+    public Page(Integer pageNo, Integer pageTotal, Integer pageTotalCount, Integer pageSize, List<T> items) {
+        this.pageNo = pageNo;
+        this.pageTotal = pageTotal;
+        this.pageTotalCount = pageTotalCount;
+        this.pageSize = pageSize;
+        this.items = items;
+    }
+
+    // getter and setter
+    public Integer getPageNo() {
+        return pageNo;
+    }
+
+    public void setPageNo(Integer pageNo) {
+        this.pageNo = pageNo;
+    }
+
+    public Integer getPageTotal() {
+        return pageTotal;
+    }
+
+    public void setPageTotal(Integer pageTotal) {
+        this.pageTotal = pageTotal;
+    }
+
+    public Integer getPageTotalCount() {
+        return pageTotalCount;
+    }
+
+    public void setPageTotalCount(Integer pageTotalCount) {
+        this.pageTotalCount = pageTotalCount;
+    }
+
+    public Integer getPageSize() {
+        return pageSize;
+    }
+
+    public void setPageSize(Integer pageSize) {
+        this.pageSize = pageSize;
+    }
+
+    public List<T> getItems() {
+        return items;
+    }
+
+    public void setItems(List<T> items) {
+        this.items = items;
+    }
+}
+```
+
+##### **b. `BookServlet`** 
+
+```java
+protected void page(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数 pageSize 和 pageNo
+        int pageSize = WebUtils.parseInt(request.getParameter("pagesize"), Page.DEFAULT_PAGE_SIZE);
+        int pageNo = WebUtils.parseInt(request.getParameter("pageno"), 1);
+
+        // 调用 Service 的 page() 获取分页对象
+        Page<Book> page = bookService.page(pageNo, pageSize);
+
+        // 将分页对象放入 request 域中
+        request.setAttribute("page", page);
+
+        // 请求转发
+        request.getRequestDispatcher("/pages/manager/book_manager.jsp").forward(request, response);
+    }
+```
+
+##### **c. `manager.jsp`**
+
+将 “图书管理” 的超链接修改为：
+
+```html
+<a href="manager/bookServlet?action=page">图书管理</a>
+```
+
+##### **d. `BookServiceImpl.java`** 
+
+`page()` 方法：
+
+```java
+    public Page<Book> page(int pageNo, int pageSize) {
+        // 查询总图书数
+        int pageTotalCount = bookDao.queryTotalCount();
+        // 总页码
+        int flag = pageTotalCount / pageSize;
+        int totalPage = pageTotalCount % pageSize == 0 ? flag : flag + 1;
+        // 当前页数据
+        int begin = (pageNo - 1) * pageSize;
+        List<Book> items = bookDao.queryBooksForCurrentPage(begin, pageSize);
+        // 创建 Page 对象
+        Page<Book> page = new Page<>(pageNo, totalPage, pageTotalCount, pageSize, items);
+
+        return page;
+    }
+```
+
+##### **e. `BookDaoImpl.java`**
+
+```java
+    public int queryTotalCount() {
+        String sql = "select count(*) from t_book";
+        Number number = (Number) queryScalar(sql);
+        return number.intValue();
+    }
+
+    @Override
+    public List<Book> queryBooksForCurrentPage(int begin, int pageSize) {
+        String sql = "select * from t_book limit ?, ?";
+        return queryMulti(sql, Book.class, begin, pageSize);
+    }
+```
+
+写完后进行测试，Dao 和 Service 测试可以单独测试，Web 测试需要和页面联调。
+
+##### 引入页码导引：
+
+![image-20221027100723275](img/image-20221027100723275.png)
+
+**页码导引的实现：**
+
+使用 EL 表达式进行有选择的输出：
+
+```html
+<div id="page_nav">
+        <%--只有非首页才能显示 “首页” 和 “上一页”--%>
+        <c:if test="${requestScope.page.pageNo > 1}">
+            <a href="manager/bookServlet?action=page&pageno=1">首页</a>
+            <a href="manager/bookServlet?action=page&pageno=${requestScope.page.pageNo - 1}">上一页</a>
+            <a href="manager/bookServlet?action=page&pageno=${requestScope.page.pageNo - 1}">${requestScope.page.pageNo - 1}</a>
+        </c:if>
+
+        【${requestScope.page.pageNo}】
+
+        <%--只有非末页才能显示 “末页” 和 “下一页”--%>
+        <c:if test="${requestScope.page.pageNo < requestScope.page.pageTotal}">
+            <a href="manager/bookServlet?action=page&pageno=${requestScope.page.pageNo + 1}">${requestScope.page.pageNo + 1}</a>
+            <a href="manager/bookServlet?action=page&pageno=${requestScope.page.pageNo + 1}">下一页</a>
+            <a href="manager/bookServlet?action=page&pageno=${requestScope.page.pageTotal}">末页</a>
+        </c:if>
+
+        共${requestScope.page.pageTotal}页，${requestScope.page.pageTotalCount}条记录 到第<input value="${param.pageno}" name="pn"
+                                                                                         id="pn_input"/>页
+        <input type="button" id="searchPageBtn" value="确定">
+    </div>
+```
+
+搜索页码的实现：
+
+```javascript
+            // 给搜索页码按钮绑定单击事件
+            $("#searchPageBtn").click(function () {
+                // 获取输入框中的值
+                var pageNo = $("#pn_input").val();
+
+                // 修改地址栏的 href 属性
+                location.href = "manager/bookServlet?action=page&pageno=" + pageNo;
+
+            })
+```
+
+##### 数据有效边境检查
+
+前端和后端都要进行有效性检查。
+
+前端使用 js 进行有效性检查：
+
+前端校验防止用户输入无效数据。
+
+`book_manager.jsp` 中
+
+```js
+var pageTotal = ${requestScope.page.pageTotal}
+
+                // 数据有效性判断
+                if (pageNo < 1 || pageNo > pageTotal) {
+                    alert("请输入合法的页码值！")
+                    return false;
+                }
+```
+
+后端校验防止黑客。
+
+`BookServiceImpl` 中
+
+```java
+        // pageNo 边界校验
+        if (pageNo < 1) {
+            pageNo = 1;
+        }
+        if (pageNo > totalPage) {
+            pageNo = totalPage;
+        }
+```
+
+# 20221028
+
+## 一、书城第五阶段——图书模块
+
+### 1、图书模块
+
+#### (4) 图书分页
+
+需求：显示 5 个连续页码，当前页码在中间。
+
+情况一：总页码小于等于5 页码范围：1-5
+
+```html
+<c:when test="${requestScope.page.pageTotal <= 5}">
+                <c:forEach begin="1" end="${requestScope.page.pageTotal}" var="i">
+                    <%--当前页--%>
+                    <c:if test="${i == requestScope.page.pageNo}">
+                        【${i}】
+                    </c:if>
+                    <c:if test="${i != requestScope.page.pageNo}">
+                        <a href="manager/bookServlet?action=page&pageno=${i}">${i}</a>
+                    </c:if>
+                </c:forEach>
+            </c:when>
+```
+
+> 注意：地址栏书写没有任何空格！！！
+
+情况二：总页码大于 5
+
+```html
+<%--情况二：总页码大于 5--%>
+<c:when test="${requestScope.page.pageTotal > 5}">
+    <c:choose>
+        <%--当前页码为前三个，页码范围 1-5--%>
+        <c:when test="${requestScope.page.pageNo < 4}">
+            <c:forEach begin="1" end="5" var="i">
+                <%--当前页--%>
+                <c:if test="${i == requestScope.page.pageNo}">
+                    【${i}】
+                </c:if>
+                <%--非当前页--%>
+                <c:if test="${i != requestScope.page.pageNo}">
+                    <a href="manager/bookServlet?action=page&pageno=${i}">${i}</a>
+                </c:if>
+            </c:forEach>
+        </c:when>
+        <%--当前页码为最后三个，页码范围 总页码-4~总页码--%>
+        <c:when test="${requestScope.page.pageNo >= requestScope.page.pageTotal - 2}">
+            <c:forEach begin="${requestScope.page.pageTotal - 4}" end="${requestScope.page.pageTotal}" var="i">
+                <%--当前页--%>
+                <c:if test="${i == requestScope.page.pageNo}">
+                    【${i}】
+                </c:if>
+                <%--非当前页--%>
+                <c:if test="${i != requestScope.page.pageNo}">
+                    <a href="manager/bookServlet?action=page&pageno=${i}">${i}</a>
+                </c:if>
+            </c:forEach>
+        </c:when>
+        <%--其他情况 页码范围 当前页码-2 ~ 当前页码+2--%>
+        <c:otherwise>
+            <c:forEach begin="${requestScope.page.pageNo - 2}" end="${requestScope.page.pageNo + 2}" var="i">
+                <%--当前页--%>
+                <c:if test="${i == requestScope.page.pageNo}">
+                    【${i}】
+                </c:if>
+                <%--非当前页--%>
+                <c:if test="${i != requestScope.page.pageNo}">
+                    <a href="manager/bookServlet?action=page&pageno=${i}">${i}</a>
+                </c:if>
+            </c:forEach>
+        </c:otherwise>
+    </c:choose>
+</c:when>
+```
+
+代码优化：forEach 标签内部的代码都是一样的，只是 begin 和 end 不一样，将其提取出来，分支中只需要设置值。
+
+分支中：
+
+```html
+<c:when test="${requestScope.page.pageTotal <= 5}">
+                <c:set var="begin" value="1"></c:set>
+                <c:set var="end" value="${requestScope.page.pageTotal}"></c:set>
+            </c:when>
+```
+
+最后统一赋值：
+
+```html
+        <c:forEach begin="${begin}" end="${end}" var="i">
+            <%--当前页--%>
+            <c:if test="${i == requestScope.page.pageNo}">
+                【${i}】
+            </c:if>
+            <%--非当前页--%>
+            <c:if test="${i != requestScope.page.pageNo}">
+                <a href="manager/bookServlet?action=page&pageno=${i}">${i}</a>
+            </c:if>
+        </c:forEach>
+```
+
