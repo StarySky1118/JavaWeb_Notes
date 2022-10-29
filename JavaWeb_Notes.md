@@ -3972,3 +3972,384 @@ var pageTotal = ${requestScope.page.pageTotal}
         </c:forEach>
 ```
 
+# 20221029
+
+## 一、书城第五阶段——图书模块
+
+### 1、图书模块
+
+#### (4) 图书分页
+
+添加分页后，添加/删除图书都应该重定向到分页功能。
+
+在进行修改时，还要记录当前页码。
+
+`manager.jsp` 向 `book_edit.jsp` 发送请求时，还要附带当前页码：
+
+```html
+<td><a href="manager/bookServlet?action=getBook&id=${book.id}&pageNo=${requestScope.page.pageNo}">修改</a></td>
+```
+
+`book_edit.jsp` 要将当前页码附带在隐藏域中：
+
+```html
+<input type="hidden" name="pageNo" value="${param.pageNo}">
+```
+
+`BookServlet` 的 `updateBook()` 中，调用 `page()` 时附带页码：
+
+```java
+int pageNo = WebUtils.parseInt(request.getParameter("pageNo"), 1);
+response.sendRedirect(request.getContextPath() + "/manager/bookServlet?action=page" + "&pageno=" + pageNo);
+```
+
+#### (5) 前台分页
+
+创建 `ClientBookServlet` 实现前台分页等功能：
+
+```java
+public class ClientBookServlet extends BaseServlet {
+    BookService bookService = new BookServiceImpl();
+
+
+    protected void page(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数 pageSize 和 pageNo
+        int pageSize = WebUtils.parseInt(request.getParameter("pagesize"), Page.DEFAULT_PAGE_SIZE);
+        int pageNo = WebUtils.parseInt(request.getParameter("pageno"), 1);
+
+        // 调用 Service 的 page() 获取分页对象
+        Page<Book> page = bookService.page(pageNo, pageSize);
+
+        // 将分页对象放入 request 域中
+        request.setAttribute("page", page);
+
+        // 请求转发
+        request.getRequestDispatcher("/pages/client/index.jsp").forward(request, response);
+    }
+}
+```
+
+`index.jsp` 只进行请求转发：
+
+```html
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<jsp:forward page="/client/clientBookServlet?action=page"></jsp:forward>
+```
+
+`/pages/client/index.jsp` 负责展示：
+
+```HTML
+<%--遍历 page.items 中的项--%>
+			<c:forEach items="${requestScope.page.items}" var="book">
+				<div class="b_list">
+					<div class="img_div">
+						<img class="book_img" alt="" src="static/img/default.jpg" />
+					</div>
+					<div class="book_info">
+						<div class="book_name">
+							<span class="sp1">书名:</span>
+							<span class="sp2">${book.name}</span>
+						</div>
+						<div class="book_author">
+							<span class="sp1">作者:</span>
+							<span class="sp2">${book.author}</span>
+						</div>
+						<div class="book_price">
+							<span class="sp1">价格:</span>
+							<span class="sp2">￥${book.price}</span>
+						</div>
+						<div class="book_sales">
+							<span class="sp1">销量:</span>
+							<span class="sp2">${book.sales}</span>
+						</div>
+						<div class="book_amount">
+							<span class="sp1">库存:</span>
+							<span class="sp2">${book.stock}</span>
+						</div>
+						<div class="book_add">
+							<button>加入购物车</button>
+						</div>
+					</div>
+				</div>
+			</c:forEach>
+```
+
+前台的分页只要复制后台分页，再改一下请求的 Servlet 程序地址即可。
+
+#### (6) 分页条的抽取
+
+分页条只有请求地址不同，因此可以抽取出来，这个请求 url 可以提取为 Page 中的变量，在第一次请求 Servlet 时将其放入 request 域中。
+
+`Page` 中添加 `url` 变量，并添加 Setter and getter
+
+```java
+private String url; // 请求地址
+```
+
+在 `ClientBookServlet` 和 `BookServlet` 中分别设置放入 request 域中的 url 值：
+
+`ClientBookServlet` 中：
+
+```java
+page.setUrl("client/clientBookServlet?action=page");
+```
+
+`BookServlet` 中：
+
+```java
+page.setUrl("manager/bookServlet?action=page");
+```
+
+在 `client/index.jsp` 中，将 `client/clientBookServlet?action=page` 替换为 `${requestScope.page.url}`：
+
+```html
+<a href= "${requestScope.page.url}&pageno=1">首页</a>
+```
+
+在 `/pages/manager/book_manager.jsp` 中进行相似操作。
+
+将分页条抽取到 `/pages/common/page_bar.jsp` 中，进行静态包含。
+
+#### (7) 使用价格查找
+
+总体流程：
+
+![](img/价格分页流程.png)
+
+基本流程实现：
+
+`index.jsp` 中数据有效性判断：
+
+```javascript
+<script type="text/javascript">
+		$(function () {
+			/*给提交按钮绑定单击事件，检验数据正确性*/
+			$("#searchSubmitBtn").click(function () {
+				// 获取区间下限
+				var min = $("#min").val()
+
+				// 获取区间上限
+				var max = $("#max").val()
+
+				// 如果区间区间下限大于区间上限
+				if (min > max) {
+					// 提示错误信息
+					alert("非法区间，请重新输入")
+					// 取消提交
+					return false
+				}
+			})
+		})
+	</script>
+```
+
+修改请求地址：
+
+```html
+<form action="client/clientBookServlet?action=pageByPrice" method="post">
+```
+
+`ClientBookServlet.java`
+
+```java
+protected void pageByPrice(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数 pageSize, pageNo, min 和 max
+        int pageSize = WebUtils.parseInt(request.getParameter("pagesize"), Page.DEFAULT_PAGE_SIZE);
+        int pageNo = WebUtils.parseInt(request.getParameter("pageno"), 1);
+        int min = WebUtils.parseInt(request.getParameter("min"), 0);
+        int max = WebUtils.parseInt(request.getParameter("max"), 1000);
+
+        // 数据正确性校验
+        if (min > max) {
+            min = 0;
+            max = 1000;
+        }
+
+        // 调用 Service 的 page() 获取分页对象
+        Page<Book> page = bookService.pageByPrice(pageNo, pageSize, min, max);
+
+        // 设置 url
+        page.setUrl("client/clientBookServlet?action=pageByPrice");
+
+        // 将分页对象放入 request 域中
+        request.setAttribute("page", page);
+
+        // 请求转发
+        request.getRequestDispatcher("/pages/client/index.jsp").forward(request, response);
+    }
+```
+
+`BookService`
+
+```java
+Page<Book> pageByPrice(int pageNo, int pageSize, int min, int max);
+```
+
+`BookServiceImpl`
+
+```java
+public Page<Book> pageByPrice(int pageNo, int pageSize, int min, int max) {
+
+        // 查询价格区间内总图书数
+        int pageTotalCount = bookDao.querySearchCount(min, max);
+        // 总页码
+        int flag = pageTotalCount / pageSize;
+        int totalPage = pageTotalCount % pageSize == 0 ? flag : flag + 1;
+
+        // pageNo 边界校验
+        if (pageNo < 1) {
+            pageNo = 1;
+        }
+        if (pageNo > totalPage) {
+            pageNo = totalPage;
+        }
+
+        // 当前页数据
+        int begin = (pageNo - 1) * pageSize;
+        List<Book> items = bookDao.queryBooksForCurrentPageByPrice(begin, pageSize, min, max);
+        // 创建并返回 Page 对象
+        return new Page<Book>(pageNo, totalPage, pageTotalCount, pageSize, items);
+    }
+```
+
+`BookDao`
+
+```java
+int querySearchCount(int min, int max);
+
+List<Book> queryBooksForCurrentPageByPrice(int begin, int pageSize, int min, int max);
+```
+
+`BookDaoImpl`
+
+```java
+    public int querySearchCount(int min, int max) {
+        String sql = "select count(*) from t_book where price between ? and ?";
+        Number number = (Number) queryScalar(sql, min, max);
+        return number.intValue();
+    }
+
+    @Override
+    public List<Book> queryBooksForCurrentPageByPrice(int begin, int pageSize, int min, int max) {
+        String sql = "select * from t_book where price between ? and ? limit ?, ?";
+        return queryMulti(sql, Book.class, min, max, begin, pageSize);
+    }
+```
+
+优化：
+
+1、查询价格的回显
+
+`index.jsp` min 和 max 参数提交后，`ClientBookServlet` 再次放入 `requestScope` 中即可。
+
+`index.jsp`
+
+```html
+<input id="min" type="text" name="min" value="${requestScope.min}"> 元 -
+```
+
+ `ClientBookServlet`
+
+```java
+request.setAttribute("min", min);
+request.setAttribute("max", max);
+```
+
+改进：
+
+request 会进行转发，请求参数 min 和max 就会保留，因此 `index.jsp` 中直接使用 `${param.min}` 获取即可。
+
+```html
+<input id="min" type="text" name="min" value="${param.min}"> 元 -
+```
+
+存在的问题：
+
+1、价格区间内没有图书，会出现异常。
+
+经过排查，错误出现在 Service 层，由于价格区间内没有数据，连锁反应导致 begin = -4，会出现 SQL 语法错误
+
+```java
+// 查询价格区间内总图书数
+int pageTotalCount = bookDao.querySearchCount(min, max); // pageTotalCount = 0
+// 总页码
+int flag = pageTotalCount / pageSize; // flag = 0
+int totalPage = pageTotalCount % pageSize == 0 ? flag : flag + 1; // totalPage = 0
+
+// pageNo 边界校验
+if (pageNo < 1) { 
+	pageNo = 1;
+}// pageNo = 1
+if (pageNo > totalPage) {
+	pageNo = totalPage;
+}// pageNo = 0
+
+// 当前页数据
+int begin = (pageNo - 1) * pageSize; // begin = -4
+List<Book> items = bookDao.queryBooksForCurrentPageByPrice(begin, pageSize, min, max);
+```
+
+将 16 行进行如下修改：
+
+```java
+int begin = (pageNo - 1) * pageSize >= 0 ? (pageNo - 1) * pageSize : 0;
+```
+
+这样 begin 就不会为负数了。
+
+2、点击页码，并不会显示应有的内容，而是其他区间范围的很多内容
+
+经过排查，错误出现在 web 层，`ClientBookServlet` 在设置 url 时没有附带 min 和 max，如下所示：
+
+```java
+protected void pageByPrice(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        // 获取请求参数 pageSize, pageNo, min 和 max
+        int pageSize = WebUtils.parseInt(request.getParameter("pagesize"), Page.DEFAULT_PAGE_SIZE);
+        int pageNo = WebUtils.parseInt(request.getParameter("pageno"), 1);
+        int min = WebUtils.parseInt(request.getParameter("min"), 0);
+        int max = WebUtils.parseInt(request.getParameter("max"), 1000);
+
+        // 数据正确性校验
+        if (min > max) {
+            min = 0;
+            max = 1000;
+        }
+
+        // 调用 Service 的 page() 获取分页对象
+        Page<Book> page = bookService.pageByPrice(pageNo, pageSize, min, max);
+
+        // 设置 url
+        page.setUrl("client/clientBookServlet?action=pageByPrice");
+
+        // 将分页对象放入 request 域中
+        request.setAttribute("page", page);
+
+        // 将 min 和 max 也放入 request 域中
+        request.setAttribute("min", min);
+        request.setAttribute("max", max);
+
+        // 请求转发
+        request.getRequestDispatcher("/pages/client/index.jsp").forward(request, response);
+    }
+```
+
+这样会导致显示价格区间在 0~1000 相应页码的条目。
+
+将 18 行修改如下：
+
+```java
+page.setUrl("client/clientBookServlet?action=pageByPrice&min=" + min + "&max=" + max);
+```
+
+## 二、Cookie
+
+### 1、概念
+
+Cookie 是服务器通知客户端保存键值对的一种技术，客户端有了 Cookie 后，每次请求都发送给服务器。
+
+Cookie 大小限制为 4 kb。
+
+### 2、创建 Cookie
+
+
+
