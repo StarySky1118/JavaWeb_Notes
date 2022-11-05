@@ -6192,8 +6192,191 @@ Map<Integer, Person> map1 = new Gson().fromJson(jsonString, new PersonMapType().
 List<Person> list = new Gson().fromJson(json, new TypeToken<Map<Integer, Person>>() {}.getType());
 ```
 
-## 二、AJAX请求
+# 20221105
+
+## 一、AJAX请求
 
 ### 1、定义
 
 ![image-20221104114922233](img/image-20221104114922233.png)
+
+![image-20221105082819185](img/image-20221105082819185.png)
+
+局部更新页面的技术。
+
+### 2、原生 AJAX 使用
+
+![image-20221105083049523](img/image-20221105083049523.png)
+
+前端页面，使用步骤：创建请求，初始化请求，发送请求，接收响应数据。
+
+```js
+//           1、我们首先要创建XMLHttpRequest
+            var xmlHttpRequest = new XMLHttpRequest()
+
+//              2、调用open方法设置请求参数
+            xmlHttpRequest.open("GET", "http://localhost:8080/json/ajaxServlet?action=doAjax", true)
+
+//              4、在send方法前绑定onreadystatechange事件，处理请求完成后的操作。
+            xmlHttpRequest.onreadystatechange = function () {
+               if (xmlHttpRequest.readyState == 4 && xmlHttpRequest.status == 200) {
+                  var jsonObj = JSON.parse(xmlHttpRequest.responseText);
+                  document.getElementById("div01").innerText = "年龄：" + jsonObj.age + "，姓名：" + jsonObj.name
+               }
+            }
+
+//              3、调用send方法发送请求
+            xmlHttpRequest.send()
+```
+
+后端：
+
+```java
+protected void doAjax(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    System.out.println("接收到了 ajax 请求");
+
+    Person person = new Person(24, "田所浩二");
+    String personJsonString = new Gson().toJson(person);
+
+    response.getWriter().write(personJsonString);
+}
+```
+
+### 3、AJAX 说明
+
+- 局部更新：
+  - 浏览器地址不变
+  - 只是使用服务器发来的数据更新局部内容
+
+- 异步请求：
+
+  浏览器向服务器请求数据时并不是干等着，而是将请求交由代理对象 `XMLHttpRequest` 取处理，在此期间，仍然可以进行其他操作。
+
+### 4、JQuery 中使用 AJAX
+
+#### (1) $.ajax
+
+在 JQuery 中使用 $.ajax 发送异步请求，以 json 方式填入各种参数。
+
+![image-20221105103918253](img/image-20221105103918253.png)
+
+使用案例：
+
+```js
+// ajax请求
+$("#ajaxBtn").click(function(){
+   
+   $.ajax({
+      url:"http://localhost:8080/json/ajaxServlet",
+      // 请求参数
+      data:"action=JQueryAjax",
+      // 请求方法
+      type:"GET",
+      // 请求成功的函数
+      success: function (data) {
+         $("#msg_div").html("年龄：" + data.age + "，姓名：" + data.name)
+      },
+      // 响应的数据类型：text/xml/json
+      dataType: "json"
+   })
+```
+
+#### (2) $.get 和 $.post
+
+在 $.ajax 基础上进一步封装，像函数一样进行异步请求发送。
+
+![image-20221105104249260](img/image-20221105104249260.png)
+
+$.get 使用案例：
+
+```js
+$.get("http://localhost:8080/json/ajaxServlet", "action=JQueryAjax", function (data) {
+   $("#msg_div").html("年龄：" + data.age + "，姓名：" + data.name)
+}, "json")
+```
+
+$.post 使用案例：
+
+```js
+$("#postBtn").click(function(){
+   $.post("http://localhost:8080/json/ajaxServlet", "action=JQueryAjax", function (data) {
+      $("#msg_div").html("年龄：" + data.age + "，姓名：" + data.name)
+   }, "json")
+   
+});
+```
+
+#### (3) $.getJSON
+
+在 $.get 基础上进一步封装，获取 JSON 格式的数据。
+
+使用案例：
+
+```js
+$("#getJSONBtn").click(function(){
+   $.getJSON("http://localhost:8080/json/ajaxServlet", "action=JQueryAjax", function (data) {
+      $("#msg_div").html("年龄：" + data.age + "，姓名：" + data.name)
+   })
+
+});
+```
+
+#### (4) `serialize()` 方法
+
+表单序列化方法，获取表单中所有内容，以 name=value&name=value 方式进行拼接。
+
+使用案例：
+
+```js
+var formData = $("#form01").serialize();
+```
+
+## 二、书城第九阶段
+
+### 1、使用 AJAX 验证用户名是否可用
+
+在注册界面中，用户名首先发送给服务器，检查是否可用，并输出提示信息。
+
+![image-20221105112219036](img/image-20221105112219036.png)
+
+总体流程：
+
+![image-20221105113133165](img/image-20221105113133165.png)
+
+具体实现：
+
+`regist.jsp` 中，在用户名合法后，向服务器发送用户名：
+
+```js
+	 // 3.验证
+    if (!usernameRegExp.test(usernameVal)) {
+        // 4.提示结果
+        $(".errorMsg").text("用户名不合法！")
+        return
+    }
+
+    // 向服务器发送 username
+    $.post("userServlet", {"action" : "usernameVerify", "username" : usernameVal}, function (data) {
+
+    $(".errorMsg").text("true" == data ? "用户名已存在" : "用户名可用")
+    }, "text")
+```
+
+`userServlet.java` 中 `usernameVerify()` 方法，获取用户名参数后进行存在验证，并向客户端回传布尔字符串：
+
+```java
+protected void usernameVerify(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException, SQLException {
+    // 获取发送到服务器的用户名
+    String username = request.getParameter("username");
+
+    // 进行验证
+    Boolean usernameExists = userService.usernameExists(username);
+
+
+    // 向客户端发送响应数据
+    response.getWriter().write(usernameExists.toString());
+}
+```
+
+`regist.jsp` 中，根据服务器传来的 `true/false` 输出相应信息。
+
