@@ -6380,3 +6380,14 @@ protected void usernameVerify(HttpServletRequest request, HttpServletResponse re
 
 `regist.jsp` 中，根据服务器传来的 `true/false` 输出相应信息。
 
+# 20221106
+
+## 一、i18n 国际化
+
+国际化三元素：
+
+![image-20221106135553837](img/image-20221106135553837.png)
+
+# 完结
+
+![image-20221106142005376](img/image-20221106142005376.png)
